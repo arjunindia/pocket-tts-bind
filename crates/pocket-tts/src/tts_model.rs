@@ -12,6 +12,7 @@ use crate::models::seanet::{SEANetDecoder, SEANetEncoder};
 use crate::models::transformer::{ProjectedTransformer, StreamingTransformer};
 use crate::modules::mlp::SimpleMLPAdaLN;
 use crate::voice_state::{increment_steps, init_states};
+use std::collections::HashMap;
 
 use anyhow::Result;
 use candle_core::{DType, Device, Tensor};
@@ -442,6 +443,31 @@ impl TTSModel {
         self.get_voice_state_from_tensor(&audio)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn save_audio_as_voice_prompt<P: AsRef<std::path::Path>>(
+        &self,
+        audio_path: P,
+        safetensors_path: P,
+    ) -> Result<()> {
+        let (audio, sample_rate) = crate::audio::read_wav(audio_path)?;
+
+        // Resample to model sample rate if needed
+        let audio = if sample_rate != self.sample_rate as u32 {
+            crate::audio::resample(&audio, sample_rate, self.sample_rate as u32)?
+        } else {
+            audio
+        };
+
+        // Add batch dimension: [C, T] -> [B, C, T]
+        let audio = audio.unsqueeze(0)?;
+
+        let conditioning = self.get_conditioning(&audio)?;
+        let data = HashMap::from([("audio_prompt", conditioning)]);
+        candle_core::safetensors::save(&data, safetensors_path)?;
+
+        Ok(())
+    }
+
     /// Create voice state from audio prompt for voice cloning
     ///
     /// Encodes the audio through Mimi and projects to flow model space.
@@ -500,8 +526,7 @@ impl TTSModel {
         Ok(flow_state)
     }
 
-    /// Create voice state from audio tensor
-    pub fn get_voice_state_from_tensor(&self, audio: &Tensor) -> Result<ModelState> {
+    pub fn get_conditioning(&self, audio: &Tensor) -> Result<Tensor> {
         let mut model_state = init_states(1, 1000);
 
         // Ensure audio tensor is on the same device as the model (fixes Metal device mismatch)
@@ -551,6 +576,12 @@ impl TTSModel {
         let latents_2d = latents.reshape((b * t, d))?;
         let conditioning_2d = latents_2d.matmul(&self.speaker_proj_weight.t()?)?;
         let conditioning = conditioning_2d.reshape((b, t, self.dim))?;
+        Ok(conditioning)
+    }
+
+    /// Create voice state from audio tensor
+    pub fn get_voice_state_from_tensor(&self, audio: &Tensor) -> Result<ModelState> {
+        let conditioning = self.get_conditioning(audio)?;
 
         // Run flow_lm with audio conditioning to update state
         let mut flow_state = init_states(1, 1000);
