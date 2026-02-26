@@ -63,6 +63,35 @@ def resolve_voice(voice_spec):
     print(f"❌ Voice file '{voice_spec}' not found.")
     return None
 
+def test_save_voice_prompt(model, wav_path, output_safetensors_path):
+    """Test converting a WAV file to a safetensors voice prompt."""
+    if not os.path.exists(wav_path):
+        print(f"⚠️  WAV file '{wav_path}' not found. Skipping voice prompt creation test.")
+        return None
+    
+    print(f"\n=== Converting WAV to Safetensors Voice Prompt ===")
+    print(f"Input WAV: {wav_path}")
+    print(f"Output safetensors: {output_safetensors_path}")
+    
+    try:
+        t0 = time.time()
+        model.save_audio_as_voice_prompt(wav_path, output_safetensors_path)
+        t1 = time.time()
+        
+        # Check the output file exists and has reasonable size
+        if os.path.exists(output_safetensors_path):
+            file_size = os.path.getsize(output_safetensors_path)
+            print(f"✅ Created safetensors voice prompt in {t1 - t0:.4f}s")
+            print(f"   File size: {file_size / 1024:.1f} KB")
+            return output_safetensors_path
+        else:
+            print(f"❌ Output file was not created")
+            return None
+    except Exception as e:
+        print(f"❌ Failed to create voice prompt: {e}")
+        return None
+
+
 def test_generation(text, voice_spec, output_file, variant="b6369a24", model=None):
     voice_path = resolve_voice(voice_spec)
     if not voice_path:
@@ -123,12 +152,36 @@ if __name__ == "__main__":
             print("\n=== Test 2: Reference WAV (ref.wav) ===")
             # Check for common ref.wav locations
             ref_candidates = ["ref.wav", "../../../ref.wav", "d:/pocket-tts-candle/ref.wav"]
-            found_ref = False
+            ref_wav_path = None
             for cand in ref_candidates:
-                if resolve_voice(cand):
+                resolved = resolve_voice(cand)
+                if resolved:
+                    ref_wav_path = resolved
                     test_generation(args.text, cand, "output_ref.wav", args.variant, model=model)
-                    found_ref = True
                     break
             
-            if not found_ref:
+            if not ref_wav_path:
                 print("⚠️  Could not find 'ref.wav' for second test. skipping.")
+            
+            # Test 3: Convert WAV to safetensors voice prompt
+            if ref_wav_path:
+                print("\n=== Test 3: Convert WAV to Safetensors Voice Prompt ===")
+                safetensors_path = test_save_voice_prompt(model, ref_wav_path, "custom_voice.safetensors")
+                
+                if safetensors_path:
+                    # Test 4: Generate using the newly created safetensors
+                    print("\n=== Test 4: Generate with Custom Voice Prompt ===")
+                    test_generation(
+                        "This is a test using a custom voice prompt created from a WAV file.",
+                        safetensors_path,
+                        "output_custom_voice.wav",
+                        args.variant,
+                        model=model
+                    )
+                    test_generation(
+                        "I love the kind of woman that will actually just kill me. Y'know, when I left the the house today I was thinking, damn, I hope some hot chick paints my brains all over some fucking hallway. And here we are. I mean really, just absolutely destroy me. I'm talkin' watermelon in the thighs level carnage.",
+                        safetensors_path,
+                        "output_custom_voice_long.wav",
+                        args.variant,
+                        model=model
+                    )

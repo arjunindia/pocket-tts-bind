@@ -89,16 +89,20 @@ fn read_wav_internal<R: std::io::Read + std::io::Seek>(
     };
 
     let tensor = if channels > 1 {
-        // Interleaved to [channels, samples]
+        // Interleaved to [channels, samples], then mix down to mono
         let num_total_samples = samples.len();
         let num_samples = num_total_samples / channels;
-        let mut reshaped = vec![0.0f32; num_total_samples];
-        for c in 0..channels {
-            for i in 0..num_samples {
-                reshaped[c * num_samples + i] = samples[i * channels + c];
+
+        // Mix stereo/multi-channel to mono by averaging channels
+        let mut mono = vec![0.0f32; num_samples];
+        for i in 0..num_samples {
+            let mut sum = 0.0f32;
+            for c in 0..channels {
+                sum += samples[i * channels + c];
             }
+            mono[i] = sum / channels as f32;
         }
-        Tensor::from_vec(reshaped, (channels, num_samples), device)?
+        Tensor::from_vec(mono, (1, num_samples), device)?
     } else {
         let n = samples.len();
         Tensor::from_vec(samples, (1, n), device)?

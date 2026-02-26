@@ -49,6 +49,14 @@ samples = model.generate(
     alba_path
 )
 
+# Creating Custom Voice Prompts
+# Convert your own WAV files to safetensors for faster loading
+model.save_audio_as_voice_prompt("my_reference.wav", "my_voice.safetensors")
+samples = model.generate(
+    "This sounds like my voice!",
+    "my_voice.safetensors"
+)
+
 # 3. Save to file (using standard python libs)
 import wave, struct
 
@@ -61,4 +69,3 @@ with wave.open("output.wav", 'w') as f:
     f.setframerate(24000)
     f.writeframes(struct.pack('<' + 'h' * len(ints), *ints))
 ```
-

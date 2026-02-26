@@ -90,6 +90,25 @@ impl PyTTSModel {
         Ok(PyModelState { inner: state })
     }
 
+    /// Convert a WAV audio file to a safetensors voice prompt file
+    ///
+    /// This allows pre-computing voice prompts for faster loading during generation.
+    /// The output safetensors file can be passed to `get_voice_state` or `generate`.
+    ///
+    /// Args:
+    ///     audio_path: Path to the input WAV file
+    ///     safetensors_path: Path where the output safetensors file will be saved
+    ///
+    /// Example:
+    ///     model.save_audio_as_voice_prompt("my_voice.wav", "my_voice.safetensors")
+    ///     model.generate("Hello!", "my_voice.safetensors")
+    fn save_audio_as_voice_prompt(&self, audio_path: &str, safetensors_path: &str) -> PyResult<()> {
+        self.inner
+            .save_audio_as_voice_prompt(audio_path, safetensors_path)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        Ok(())
+    }
+
     /// Generate using the voice state
     fn generate_audio(&self, text: &str, voice_state: &PyModelState) -> PyResult<Vec<f32>> {
         let audio_tensor = self
