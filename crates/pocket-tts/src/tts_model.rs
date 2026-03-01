@@ -106,6 +106,60 @@ impl TTSModel {
         )
     }
 
+    /// Load model from custom file paths
+    ///
+    /// This function allows loading a TTS model from custom paths for the config file,
+    /// weights file, and tokenizer file, instead of relying on the HuggingFace Hub.
+    ///
+    /// # Arguments
+    /// * `config_path` - Path to the YAML config file
+    /// * `weights_path` - Path to the safetensors weights file
+    /// * `tokenizer_path` - Path to the tokenizer.json file
+    /// * `temp` - Generation temperature (default: 0.6)
+    /// * `lsd_decode_steps` - Number of LSD decode steps (default: 10)
+    /// * `eos_threshold` - End-of-sequence threshold (default: 0.2)
+    /// * `noise_clamp` - Optional noise clamping value
+    /// * `device` - Device to load the model on
+    ///
+    /// # Returns
+    /// Fully initialized TTSModel ready for generation
+    pub fn load_from_paths(
+        config_path: &str,
+        weights_path: &str,
+        tokenizer_path: &str,
+        temp: f32,
+        lsd_decode_steps: usize,
+        eos_threshold: f32,
+        noise_clamp: Option<f32>,
+        device: &Device,
+    ) -> Result<Self> {
+        let config = load_config(config_path)?;
+        let dtype = DType::F32;
+
+        // Load safetensors with VarBuilder
+        let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[weights_path], dtype, device)? };
+
+        // Build conditioner with provided tokenizer path
+        let tokenizer_path = std::path::Path::new(tokenizer_path);
+        let conditioner = LUTConditioner::new(
+            config.flow_lm.lookup_table.n_bins,
+            tokenizer_path,
+            config.flow_lm.lookup_table.dim,
+            config.flow_lm.transformer.d_model,
+            vb.pp("flow_lm.conditioner"),
+        )?;
+
+        Self::from_config_and_vb(
+            config,
+            temp,
+            lsd_decode_steps,
+            eos_threshold,
+            noise_clamp,
+            conditioner,
+            vb,
+        )
+    }
+
     /// Load model with quantized weights for reduced memory footprint
     ///
     /// This applies simulated int8 quantization to applicable layers,

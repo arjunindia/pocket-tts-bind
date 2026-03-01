@@ -1,3 +1,4 @@
+use candle_core::Device;
 use pocket_tts::{ModelState, TTSModel};
 use pyo3::prelude::*;
 use std::path::Path;
@@ -28,6 +29,65 @@ impl PyTTSModel {
     ) -> PyResult<Self> {
         let model = TTSModel::load_with_params(variant, temp, lsd_decode_steps, eos_threshold)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        Ok(PyTTSModel { inner: model })
+    }
+
+    /// Load model from custom file paths
+    ///
+    /// This function allows loading a TTS model from custom paths for the config file,
+    /// weights file, and tokenizer file, instead of relying on the HuggingFace Hub.
+    /// The config and tokenizer files are bundled with the wheel, so only the weights
+    /// file path is required.
+    ///
+    /// # Arguments
+    /// * `weights_path` - Path to the safetensors weights file
+    /// * `temp` - Generation temperature (default: 0.6)
+    /// * `lsd_decode_steps` - Number of LSD decode steps (default: 10)
+    /// * `eos_threshold` - End-of-sequence threshold (default: 0.2)
+    /// * `noise_clamp` - Optional noise clamping value
+    /// * `device` - Device to load the model on
+    ///
+    /// # Returns
+    /// PyTTSModel instance ready for generation
+    #[staticmethod]
+    #[pyo3(signature = (weights_path, temp=0.6, lsd_decode_steps=10, eos_threshold=0.2, noise_clamp=None, device="cpu"))]
+    fn load_from_paths(
+        weights_path: &str,
+        temp: f32,
+        lsd_decode_steps: usize,
+        eos_threshold: f32,
+        noise_clamp: Option<f32>,
+        device: &str,
+    ) -> PyResult<Self> {
+        let device = match device {
+            "cpu" => Device::Cpu,
+            "cuda" => Device::new_cuda(0)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?,
+            "metal" => Device::new_metal(0)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?,
+            _ => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid device. Use 'cpu', 'cuda', or 'metal'",
+                ));
+            }
+        };
+
+        // Use the bundled config and tokenizer files
+        let config_path = "crates/pocket-tts/config/b6369a24.yaml";
+        let tokenizer_path = "crates/pocket-tts/assets/tokenizer.json";
+
+        let model = TTSModel::load_from_paths(
+            config_path,
+            weights_path,
+            tokenizer_path,
+            temp,
+            lsd_decode_steps,
+            eos_threshold,
+            noise_clamp,
+            &device,
+        )
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
         Ok(PyTTSModel { inner: model })
     }
 
