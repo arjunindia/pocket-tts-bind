@@ -34,10 +34,9 @@ impl PyTTSModel {
 
     /// Load model from custom file paths
     ///
-    /// This function allows loading a TTS model from custom paths for the config file,
-    /// weights file, and tokenizer file, instead of relying on the HuggingFace Hub.
-    /// The config and tokenizer files are bundled with the wheel, so only the weights
-    /// file path is required.
+    /// This function allows loading a TTS model from only the weights file path,
+    /// with the config and tokenizer files embedded directly in the library.
+    /// This eliminates the need to manage separate config and tokenizer files.
     ///
     /// # Arguments
     /// * `weights_path` - Path to the safetensors weights file
@@ -72,87 +71,50 @@ impl PyTTSModel {
             }
         };
 
-        // Use the bundled config and tokenizer files
-        // These paths are relative to the crate directory during development
-        // In a real deployment, these should be bundled with the wheel
-        let config_path = "crates/pocket-tts/config/b6369a24.yaml";
-        let tokenizer_path = "crates/pocket-tts/assets/tokenizer.json";
+        // Embed config and tokenizer content directly in the library
+        // This eliminates the need to manage separate files
+        let config_content = include_str!("../../pocket-tts/config/b6369a24.yaml");
+        let tokenizer_content = include_str!("../../pocket-tts/assets/tokenizer.json");
 
-        // Check if the bundled files exist at the expected paths
-        let config_exists = std::path::Path::new(config_path).exists();
-        let tokenizer_exists = std::path::Path::new(tokenizer_path).exists();
+        // Create temporary files for the embedded content
+        let temp_dir = std::env::temp_dir();
+        let config_path = temp_dir.join("pocket_tts_config.yaml");
+        let tokenizer_path = temp_dir.join("pocket_tts_tokenizer.json");
 
-        if !config_exists || !tokenizer_exists {
-            // Try to find the files in the current directory or parent directories
-            let current_dir = std::env::current_dir().unwrap_or_default();
-            let mut found_config = None;
-            let mut found_tokenizer = None;
+        // Write embedded content to temporary files
+        std::fs::write(&config_path, config_content).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to write config: {}",
+                e
+            ))
+        })?;
+        std::fs::write(&tokenizer_path, tokenizer_content).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to write tokenizer: {}",
+                e
+            ))
+        })?;
 
-            // Search in current directory and parent directories
-            let mut search_dir = current_dir.clone();
-            for _ in 0..5 {
-                // Limit search depth
-                let test_config = search_dir.join("crates/pocket-tts/config/b6369a24.yaml");
-                let test_tokenizer = search_dir.join("crates/pocket-tts/assets/tokenizer.json");
+        // Clean up temporary files when the model is dropped
+        // Note: In a production implementation, you might want to use a more robust cleanup mechanism
 
-                if test_config.exists() {
-                    found_config = Some(test_config);
-                }
-                if test_tokenizer.exists() {
-                    found_tokenizer = Some(test_tokenizer);
-                }
+        let model = TTSModel::load_from_paths(
+            config_path.to_str().unwrap(),
+            weights_path,
+            tokenizer_path.to_str().unwrap(),
+            temp,
+            lsd_decode_steps,
+            eos_threshold,
+            noise_clamp,
+            &device,
+        )
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
-                if found_config.is_some() && found_tokenizer.is_some() {
-                    break;
-                }
+        // Clean up temporary files immediately after loading
+        let _ = std::fs::remove_file(&config_path);
+        let _ = std::fs::remove_file(&tokenizer_path);
 
-                match search_dir.parent() {
-                    Some(parent) => search_dir = parent.to_path_buf(),
-                    None => break,
-                }
-            }
-
-            // Use found paths or fall back to original
-            let final_config_path = found_config
-                .as_ref()
-                .map(|p| p.to_str().unwrap_or(config_path))
-                .unwrap_or(config_path);
-            let final_tokenizer_path = found_tokenizer
-                .as_ref()
-                .map(|p| p.to_str().unwrap_or(tokenizer_path))
-                .unwrap_or(tokenizer_path);
-
-            println!("DEBUG: Using config path: {}", final_config_path);
-            println!("DEBUG: Using tokenizer path: {}", final_tokenizer_path);
-
-            let model = TTSModel::load_from_paths(
-                final_config_path,
-                weights_path,
-                final_tokenizer_path,
-                temp,
-                lsd_decode_steps,
-                eos_threshold,
-                noise_clamp,
-                &device,
-            )
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-
-            Ok(PyTTSModel { inner: model })
-        } else {
-            let model = TTSModel::load_from_paths(
-                config_path,
-                weights_path,
-                tokenizer_path,
-                temp,
-                lsd_decode_steps,
-                eos_threshold,
-                noise_clamp,
-                &device,
-            )
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-
-            Ok(PyTTSModel { inner: model })
-        }
+        Ok(PyTTSModel { inner: model })
     }
 
     /// Generate audio from text
