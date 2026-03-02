@@ -6,9 +6,9 @@ build-backend = "maturin"
 name = "pocket_tts_bindings"
 version = "0.1.1"
 requires-python = ">=3.8"
-dependencies = [
-    "huggingface_hub",
-]
+# dependencies = [
+#     "huggingface_hub",
+# ]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
