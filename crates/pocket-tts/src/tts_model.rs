@@ -160,6 +160,60 @@ impl TTSModel {
         )
     }
 
+    /// Load model from weights file path with config and tokenizer provided as strings
+    ///
+    /// This function allows loading a TTS model from only the weights file path,
+    /// with the config and tokenizer provided directly as strings/bytes.
+    /// This eliminates the need to manage separate config and tokenizer files.
+    ///
+    /// # Arguments
+    /// * `weights_path` - Path to the safetensors weights file
+    /// * `config_content` - YAML config content as string
+    /// * `tokenizer_content` - JSON tokenizer content as string (or bytes)
+    /// * `temp` - Generation temperature (default: 0.6)
+    /// * `lsd_decode_steps` - Number of LSD decode steps (default: 10)
+    /// * `eos_threshold` - End-of-sequence threshold (default: 0.2)
+    /// * `noise_clamp` - Optional noise clamping value
+    /// * `device` - Device to load the model on
+    ///
+    /// # Returns
+    /// Fully initialized TTSModel ready for generation
+    pub fn load_from_strings(
+        weights_path: &str,
+        config_content: &str,
+        tokenizer_content: &[u8],
+        temp: f32,
+        lsd_decode_steps: usize,
+        eos_threshold: f32,
+        noise_clamp: Option<f32>,
+        device: &Device,
+    ) -> Result<Self> {
+        let config: Config = serde_yaml::from_str(config_content)?;
+        let dtype = DType::F32;
+
+        // Load safetensors with VarBuilder
+        let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[weights_path], dtype, device)? };
+
+        // Build conditioner from tokenizer bytes directly
+        let conditioner = LUTConditioner::new_from_bytes(
+            config.flow_lm.lookup_table.n_bins,
+            tokenizer_content,
+            config.flow_lm.lookup_table.dim,
+            config.flow_lm.transformer.d_model,
+            vb.pp("flow_lm.conditioner"),
+        )?;
+
+        Self::from_config_and_vb(
+            config,
+            temp,
+            lsd_decode_steps,
+            eos_threshold,
+            noise_clamp,
+            conditioner,
+            vb,
+        )
+    }
+
     /// Load model with quantized weights for reduced memory footprint
     ///
     /// This applies simulated int8 quantization to applicable layers,

@@ -74,34 +74,12 @@ impl PyTTSModel {
         // Embed config and tokenizer content directly in the library
         // This eliminates the need to manage separate files
         let config_content = include_str!("../../pocket-tts/config/b6369a24.yaml");
-        let tokenizer_content = include_str!("../../pocket-tts/assets/tokenizer.json");
+        let tokenizer_content = include_bytes!("../../pocket-tts/assets/tokenizer.json");
 
-        // Create temporary files for the embedded content
-        let temp_dir = std::env::temp_dir();
-        let config_path = temp_dir.join("pocket_tts_config.yaml");
-        let tokenizer_path = temp_dir.join("pocket_tts_tokenizer.json");
-
-        // Write embedded content to temporary files
-        std::fs::write(&config_path, config_content).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to write config: {}",
-                e
-            ))
-        })?;
-        std::fs::write(&tokenizer_path, tokenizer_content).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to write tokenizer: {}",
-                e
-            ))
-        })?;
-
-        // Clean up temporary files when the model is dropped
-        // Note: In a production implementation, you might want to use a more robust cleanup mechanism
-
-        let model = TTSModel::load_from_paths(
-            config_path.to_str().unwrap(),
+        let model = TTSModel::load_from_strings(
             weights_path,
-            tokenizer_path.to_str().unwrap(),
+            config_content,
+            tokenizer_content,
             temp,
             lsd_decode_steps,
             eos_threshold,
@@ -109,10 +87,6 @@ impl PyTTSModel {
             &device,
         )
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-
-        // Clean up temporary files immediately after loading
-        let _ = std::fs::remove_file(&config_path);
-        let _ = std::fs::remove_file(&tokenizer_path);
 
         Ok(PyTTSModel { inner: model })
     }
