@@ -74,7 +74,7 @@ impl PyTTSModel {
         // Embed config and tokenizer content directly in the library
         // This eliminates the need to manage separate files
         let config_content = include_str!("../../pocket-tts/config/b6369a24.yaml");
-        let tokenizer_content = include_bytes!("../../pocket-tts/assets/tokenizer.json");
+        let tokenizer_content = include_bytes!("../../pocket-tts/assets/tokenizer.model");
 
         let model = TTSModel::load_from_strings(
             weights_path,
