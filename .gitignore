@@ -78,7 +78,7 @@ profile_output*
 # Generally ignore large model/audio files but allow those in assets/
 *.safetensors
 *.wav
-*.model
+# *.model
 *.pt
 !/assets/*.wav
 !/assets/ref_voice_conditioning.safetensors
