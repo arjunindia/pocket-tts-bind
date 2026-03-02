@@ -73,22 +73,86 @@ impl PyTTSModel {
         };
 
         // Use the bundled config and tokenizer files
+        // These paths are relative to the crate directory during development
+        // In a real deployment, these should be bundled with the wheel
         let config_path = "crates/pocket-tts/config/b6369a24.yaml";
         let tokenizer_path = "crates/pocket-tts/assets/tokenizer.json";
 
-        let model = TTSModel::load_from_paths(
-            config_path,
-            weights_path,
-            tokenizer_path,
-            temp,
-            lsd_decode_steps,
-            eos_threshold,
-            noise_clamp,
-            &device,
-        )
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        // Check if the bundled files exist at the expected paths
+        let config_exists = std::path::Path::new(config_path).exists();
+        let tokenizer_exists = std::path::Path::new(tokenizer_path).exists();
 
-        Ok(PyTTSModel { inner: model })
+        if !config_exists || !tokenizer_exists {
+            // Try to find the files in the current directory or parent directories
+            let current_dir = std::env::current_dir().unwrap_or_default();
+            let mut found_config = None;
+            let mut found_tokenizer = None;
+
+            // Search in current directory and parent directories
+            let mut search_dir = current_dir.clone();
+            for _ in 0..5 {
+                // Limit search depth
+                let test_config = search_dir.join("crates/pocket-tts/config/b6369a24.yaml");
+                let test_tokenizer = search_dir.join("crates/pocket-tts/assets/tokenizer.json");
+
+                if test_config.exists() {
+                    found_config = Some(test_config);
+                }
+                if test_tokenizer.exists() {
+                    found_tokenizer = Some(test_tokenizer);
+                }
+
+                if found_config.is_some() && found_tokenizer.is_some() {
+                    break;
+                }
+
+                match search_dir.parent() {
+                    Some(parent) => search_dir = parent.to_path_buf(),
+                    None => break,
+                }
+            }
+
+            // Use found paths or fall back to original
+            let final_config_path = found_config
+                .as_ref()
+                .map(|p| p.to_str().unwrap_or(config_path))
+                .unwrap_or(config_path);
+            let final_tokenizer_path = found_tokenizer
+                .as_ref()
+                .map(|p| p.to_str().unwrap_or(tokenizer_path))
+                .unwrap_or(tokenizer_path);
+
+            println!("DEBUG: Using config path: {}", final_config_path);
+            println!("DEBUG: Using tokenizer path: {}", final_tokenizer_path);
+
+            let model = TTSModel::load_from_paths(
+                final_config_path,
+                weights_path,
+                final_tokenizer_path,
+                temp,
+                lsd_decode_steps,
+                eos_threshold,
+                noise_clamp,
+                &device,
+            )
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+            Ok(PyTTSModel { inner: model })
+        } else {
+            let model = TTSModel::load_from_paths(
+                config_path,
+                weights_path,
+                tokenizer_path,
+                temp,
+                lsd_decode_steps,
+                eos_threshold,
+                noise_clamp,
+                &device,
+            )
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+            Ok(PyTTSModel { inner: model })
+        }
     }
 
     /// Generate audio from text
