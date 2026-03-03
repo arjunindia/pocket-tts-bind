@@ -104,10 +104,13 @@ impl PyTTSModel {
         if let Some(path) = valid_voice_state {
             let state = self.get_voice_state(path)?;
 
-            let audio_tensor = self
-                .inner
-                .generate(text, &state.inner)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+            let audio_tensor = Python::attach(|py| {
+                py.detach(|| {
+                    self.inner
+                        .generate(text, &state.inner)
+                        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+                })
+            })?;
 
             println!(
                 "DEBUG: Output tensor shape before flatten: {:?}",
@@ -171,10 +174,13 @@ impl PyTTSModel {
 
     /// Generate using the voice state
     fn generate_audio(&self, text: &str, voice_state: &PyModelState) -> PyResult<Vec<f32>> {
-        let audio_tensor = self
-            .inner
-            .generate(text, &voice_state.inner)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        let audio_tensor = Python::attach(|py| {
+            py.detach(|| {
+                self.inner
+                    .generate(text, &voice_state.inner)
+                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+            })
+        })?;
 
         println!(
             "DEBUG: Output tensor shape before flatten: {:?}",
