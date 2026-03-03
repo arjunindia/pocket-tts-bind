@@ -1058,7 +1058,7 @@ impl TTSModel {
         &self,
         text: &str,
         voice_state: &ModelState,
-    ) -> Box<dyn Iterator<Item = Result<Tensor>> + 'static> {
+    ) -> Box<dyn Iterator<Item = Result<Tensor>> + Send + 'static> {
         let model = self.clone();
         let voice_state_owned = voice_state.clone();
         let chunks = model.split_into_best_sentences(text);
@@ -1075,7 +1075,7 @@ impl TTSModel {
         &self,
         text: String,
         voice_state: &ModelState,
-    ) -> Box<dyn Iterator<Item = Result<Tensor>>> {
+    ) -> Box<dyn Iterator<Item = Result<Tensor>> + Send> {
         let mut state = voice_state.clone();
         let mut mimi_state = init_states(1, 1000);
 

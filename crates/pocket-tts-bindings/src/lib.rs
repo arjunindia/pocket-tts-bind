@@ -2,6 +2,7 @@ use candle_core::Device;
 use pocket_tts::{ModelState, TTSModel};
 use pyo3::prelude::*;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 /// Python wrapper for the Rust TTSModel
 #[pyclass]
@@ -193,6 +194,83 @@ impl PyTTSModel {
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
         Ok(audio_data)
+    }
+
+    /// Generate audio from text in chunks (streaming)
+    ///
+    /// Returns an iterator that yields chunks of audio samples.
+    /// Each chunk contains the samples for one Mimi frame.
+    ///
+    /// Args:
+    ///     text: Text to generate speech from
+    ///     valid_voice_state: Path to voice state file (.wav or .safetensors)
+    ///
+    /// Returns:
+    ///     Iterator yielding lists of floats (audio samples per frame)
+    #[pyo3(signature = (text, valid_voice_state=None))]
+    fn generate_chunked(&self, text: &str, valid_voice_state: Option<&str>) -> PyResult<PyAudioChunkIterator> {
+        if let Some(path) = valid_voice_state {
+            let state = self.get_voice_state(path)?;
+            let iter = self.inner.generate_stream_owned(text, &state.inner);
+            Ok(PyAudioChunkIterator {
+                inner: Arc::new(Mutex::new(iter)),
+            })
+        } else {
+            Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Voice state path must be provided for now",
+            ))
+        }
+    }
+
+    /// Generate audio using a voice state in chunks (streaming)
+    ///
+    /// Returns an iterator that yields chunks of audio samples.
+    /// Each chunk contains the samples for one Mimi frame.
+    ///
+    /// Args:
+    ///     text: Text to generate speech from
+    ///     voice_state: Voice state object
+    ///
+    /// Returns:
+    ///     Iterator yielding lists of floats (audio samples per frame)
+    fn generate_audio_chunked(&self, text: &str, voice_state: &PyModelState) -> PyResult<PyAudioChunkIterator> {
+        let iter = self.inner.generate_stream_owned(text, &voice_state.inner);
+        Ok(PyAudioChunkIterator {
+            inner: Arc::new(Mutex::new(iter)),
+        })
+    }
+}
+
+/// Python iterator for audio chunks
+#[pyclass]
+struct PyAudioChunkIterator {
+    inner: Arc<Mutex<Box<dyn Iterator<Item = Result<candle_core::Tensor, anyhow::Error>> + Send>>>,
+}
+
+#[pymethods]
+impl PyAudioChunkIterator {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(slf: PyRefMut<'_, Self>) -> Option<Result<Vec<f32>, PyErr>> {
+        let iter = slf.inner.clone();
+        Python::attach(|py| {
+            py.detach(|| {
+                let mut guard = iter.lock().unwrap();
+                guard.next().map(|result| {
+                    result
+                        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+                        .and_then(|tensor| {
+                            tensor
+                                .flatten_all()
+                                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
+                                .to_vec1::<f32>()
+                                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+                        })
+                })
+            })
+        })
     }
 }
 
