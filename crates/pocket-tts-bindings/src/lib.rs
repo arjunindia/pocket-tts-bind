@@ -41,16 +41,16 @@ impl PyTTSModel {
     ///
     /// # Arguments
     /// * `weights_path` - Path to the safetensors weights file
-    /// * `temp` - Generation temperature (default: 0.6)
-    /// * `lsd_decode_steps` - Number of LSD decode steps (default: 10)
-    /// * `eos_threshold` - End-of-sequence threshold (default: 0.2)
-    /// * `noise_clamp` - Optional noise clamping value
+    /// * `temp` - Generation temperature (default: 0.7)
+    /// * `lsd_decode_steps` - Number of LSD decode steps (default: 1)
+    /// * `eos_threshold` - End-of-sequence threshold (default: -4.0)
+    /// * `noise_clamp` - Optional noise clamping value (default: None)
     /// * `device` - Device to load the model on
     ///
     /// # Returns
     /// PyTTSModel instance ready for generation
     #[staticmethod]
-    #[pyo3(signature = (weights_path, temp=0.6, lsd_decode_steps=10, eos_threshold=0.2, noise_clamp=None, device="cpu"))]
+    #[pyo3(signature = (weights_path, temp=0.7, lsd_decode_steps=1, eos_threshold=-4.0, noise_clamp=None, device="cpu"))]
     fn load_from_paths(
         weights_path: &str,
         temp: f32,
