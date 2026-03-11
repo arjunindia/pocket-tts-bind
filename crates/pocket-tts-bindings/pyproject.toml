@@ -14,9 +14,3 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
-
-[tool.maturin]
-include = [
-    "crates/pocket-tts/assets/tokenizer.json",
-    "crates/pocket-tts/config/b6369a24.yaml",
-]
